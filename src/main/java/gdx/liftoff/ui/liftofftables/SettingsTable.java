@@ -90,4 +90,8 @@ public class SettingsTable extends LiftoffTable {
     public void updateError() {
         pathsPanel.updateError();
     }
+
+    public void updateProjectPathFromProjectName() {
+        pathsPanel.updateProjectPathFromProjectName();
+    }
 }

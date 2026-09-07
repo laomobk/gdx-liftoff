@@ -47,6 +47,7 @@ import org.jetbrains.annotations.NotNull;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.util.nfd.NativeFileDialog;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.*;
 import java.util.Collections;
@@ -576,6 +577,9 @@ public class Main extends ApplicationAdapter {
         UserData.gradleTasks = "";//pref.getString("GradleTasks", prop.getProperty("gradleTasksDefault"));
         UserData.projectPath = pref.getString("projectPath", prop.getProperty("projectPathDefault"));
         UserData.androidPath = pref.getString("AndroidSdk", prop.getProperty("androidPathDefault"));
+        UserData.createDirectory = pref.getBoolean("createDirectory", true);
+        UserData.packageNameSynced = pref.getBoolean("packageNameSynced", true);
+        UserData.projectPathSynced = pref.getBoolean("projectPathSynced", true);
         UserData.log = "";
     }
 
@@ -608,6 +612,9 @@ public class Main extends ApplicationAdapter {
         UserData.gradleTasks = "";//prop.getProperty("gradleTasksDefault");
         UserData.projectPath = prop.getProperty("projectPathDefault");
         UserData.androidPath = prop.getProperty("androidPathDefault");
+        UserData.createDirectory = true;
+        UserData.packageNameSynced = true;
+        UserData.projectPathSynced = true;
         UserData.log = "";
 
         pref.putString("Name", projectName);
@@ -621,6 +628,9 @@ public class Main extends ApplicationAdapter {
         pref.putString("GradleTasks", gradleTasks);
         pref.putString("projectPath", projectPath);
         pref.putString("AndroidSdk", androidPath);
+        pref.putBoolean("createDirectory", createDirectory);
+        pref.putBoolean("packageNameSynced", packageNameSynced);
+        pref.putBoolean("projectPathSynced", projectPathSynced);
         flushPref();
     }
 
@@ -659,7 +669,10 @@ public class Main extends ApplicationAdapter {
         }
 
         FileHandle tempFileHandle = Gdx.files.absolute(UserData.projectPath);
-        if (!tempFileHandle.exists() || !tempFileHandle.isDirectory()) {
+        if (tempFileHandle.exists() && !tempFileHandle.isDirectory()) {
+            return false;
+        }
+        if (!tempFileHandle.exists() && !UserData.createDirectory) {
             return false;
         }
 
@@ -708,6 +721,53 @@ public class Main extends ApplicationAdapter {
         return true;
     }
 
+    /** Creates a valid, lower-case package suffix from the project name. */
+    public static String getSynchronizedPackageName(String projectName, String currentPackageName) {
+        StringBuilder suffix = new StringBuilder();
+        String lowerName = projectName == null ? "" : projectName.toLowerCase(Locale.ROOT);
+        for (int i = 0; i < lowerName.length(); i++) {
+            char character = lowerName.charAt(i);
+            if (Character.isWhitespace(character)) continue;
+            if (Character.isJavaIdentifierPart(character)) suffix.append(character);
+            else suffix.append('_');
+        }
+        if (suffix.length() == 0) suffix.append('_');
+        if (!Character.isJavaIdentifierStart(suffix.charAt(0))) suffix.insert(0, '_');
+        if (suffix.toString().matches("(?i)" + FORBIDDEN_NAMES)) suffix.append('_');
+
+        String prefix = "com.example";
+        if (currentPackageName != null) {
+            int separator = currentPackageName.lastIndexOf('.');
+            if (separator > 0 && isValidPackageName(currentPackageName.substring(0, separator))) {
+                prefix = currentPackageName.substring(0, separator).toLowerCase(Locale.ROOT);
+            }
+        }
+        return prefix + "." + suffix;
+    }
+
+    /** Replaces the final directory component while preserving the selected parent directory. */
+    public static String getSynchronizedProjectPath(String projectPath, String projectName) {
+        File directory = new File(projectPath);
+        String folderName = projectName == null ? "" : projectName.replaceAll("\\s+", "");
+        StringBuilder sanitized = new StringBuilder();
+        for (int i = 0; i < folderName.length(); i++) {
+            char character = folderName.charAt(i);
+            if (character == '/' || character == '\\' || character == ':' || character == '*' || character == '?' ||
+                character == '"' || character == '<' || character == '>' || character == '|') {
+                sanitized.append('_');
+            } else if (!Character.isISOControl(character)) {
+                sanitized.append(character);
+            }
+        }
+        while (sanitized.length() > 0 && sanitized.charAt(sanitized.length() - 1) == '.') {
+            sanitized.setLength(sanitized.length() - 1);
+        }
+        if (sanitized.length() == 0) sanitized.append('_');
+        if (sanitized.toString().matches("(?i)" + FORBIDDEN_NAMES)) sanitized.append('_');
+        File parent = directory.getParentFile();
+        return new File(parent == null ? directory : parent, sanitized.toString()).getPath();
+    }
+
     /**
      * Placeholder for project generation.
      */
@@ -727,6 +787,9 @@ public class Main extends ApplicationAdapter {
                 BasicProjectData basicData = new BasicProjectData(
                     UserData.projectName, UserData.packageName, UserData.mainClassName,
                     Gdx.files.absolute(UserData.projectPath), Gdx.files.absolute(UserData.androidPath));
+                if (UserData.createDirectory) {
+                    basicData.getDestination().mkdirs();
+                }
                 AdvancedProjectData advancedData = new AdvancedProjectData(appVersion, libgdxVersion, javaVersion,
                     gwtPluginVersion, javaVersion, javaVersion, addGuiAssets, addReadme, tasks, true, 4);
 

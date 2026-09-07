@@ -23,6 +23,9 @@ public class UserData {
     public static String gradleTasks;
     public static String projectPath;
     public static String androidPath;
+    public static boolean createDirectory;
+    public static boolean packageNameSynced;
+    public static boolean projectPathSynced;
     public static String log;
 
     public static ArrayList<String> getLanguages() {

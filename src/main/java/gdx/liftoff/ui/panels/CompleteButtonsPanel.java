@@ -17,7 +17,7 @@ import java.util.stream.Stream;
 import static gdx.liftoff.Main.*;
 
 /**
- * The table to display the buttons to create a new project, open the project in IDEA, or exit the application after
+ * The table to display the buttons to create a new project, open the project in an IDE, or exit the application after
  * project generation is complete.
  */
 public class CompleteButtonsPanel extends Table implements Panel {
@@ -28,6 +28,8 @@ public class CompleteButtonsPanel extends Table implements Panel {
 
     String intellijPath = null;
     boolean intellijIsFlatpak = false;
+    String androidStudioPath = null;
+    boolean androidStudioIsFlatpak = false;
 
     private static final List<String> manuallyInstalledLinuxIdeaNames = Arrays.asList(
         "idea",
@@ -121,6 +123,34 @@ public class CompleteButtonsPanel extends Table implements Panel {
             }
         });
 
+        //android studio button
+        table.row();
+        final TextButton androidStudioButton = new TextButton(prop.getProperty("openAndroidStudio"), skin);
+        table.add(androidStudioButton);
+        addHandListener(androidStudioButton);
+        try {
+            androidStudioPath = findAndroidStudio();
+            androidStudioIsFlatpak = "com.google.AndroidStudio".equals(androidStudioPath);
+            androidStudioButton.setDisabled(false);
+        } catch (Exception e) {
+            addTooltip(androidStudioButton, Align.top, TOOLTIP_WIDTH, prop.getProperty("androidStudioNotFoundTip"));
+            androidStudioButton.setDisabled(true);
+        }
+
+        onChange(androidStudioButton, () -> {
+            try {
+                if (androidStudioIsFlatpak) {
+                    new ProcessBuilder("flatpak", "run", androidStudioPath, ".")
+                        .directory(Gdx.files.absolute(UserData.projectPath).file()).start();
+                } else {
+                    new ProcessBuilder(androidStudioPath, ".")
+                        .directory(Gdx.files.absolute(UserData.projectPath).file()).start();
+                }
+            } catch (IOException e) {
+                androidStudioButton.setText("WHOOPS");
+            }
+        });
+
         //exit button
         table.row();
         textButton = new TextButton(prop.getProperty("exit"), skin);
@@ -142,6 +172,63 @@ public class CompleteButtonsPanel extends Table implements Panel {
             .orElseThrow(() -> new Exception("IntelliJ not found"));
 
         return new File(intellijFolder, "bin/idea64.exe").getAbsolutePath();
+    }
+
+    private static String findAndroidStudio() throws Exception {
+        String osName = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        if (osName.contains("win")) {
+            String path = findOnPath("where.exe", "studio64.exe", "studio.exe", "studio.bat");
+            if (path != null) return path;
+
+            String[] roots = {System.getenv("PROGRAMFILES"), System.getenv("LOCALAPPDATA")};
+            for (String root : roots) {
+                if (root == null) continue;
+                for (String executableName : new String[]{"studio64.exe", "studio.exe"}) {
+                    File executable = new File(root, "Android/Android Studio/bin/" + executableName);
+                    if (executable.isFile()) return executable.getAbsolutePath();
+                }
+            }
+        } else if (osName.contains("mac")) {
+            File executable = new File("/Applications/Android Studio.app/Contents/MacOS/studio");
+            if (executable.isFile()) return executable.getAbsolutePath();
+        } else if (osName.contains("linux")) {
+            String path = findOnPath("which", "studio", "android-studio");
+            if (path != null) return path;
+
+            String[] locations = {"/opt/android-studio/bin/studio.sh", "/usr/local/android-studio/bin/studio.sh"};
+            for (String location : locations) {
+                if (new File(location).isFile()) return location;
+            }
+
+            String flatpakId = findFlatpakApplication("com.google.AndroidStudio");
+            if (flatpakId != null) {
+                return flatpakId;
+            }
+        }
+        throw new Exception("Android Studio not found");
+    }
+
+    private static String findOnPath(String command, String... executableNames) throws Exception {
+        for (String executableName : executableNames) {
+            Process process = new ProcessBuilder(command, executableName).start();
+            int ret = process.waitFor();
+            if (ret != 0) continue;
+
+            String path = new BufferedReader(new InputStreamReader(process.getInputStream())).readLine();
+            if (path != null && !path.trim().isEmpty()) return path.trim();
+        }
+        return null;
+    }
+
+    private static String findFlatpakApplication(String applicationId) throws Exception {
+        Process process = new ProcessBuilder("flatpak", "list", "--app", "--columns=application").start();
+        if (process.waitFor() != 0) return null;
+        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+        String line;
+        while ((line = reader.readLine()) != null) {
+            if (applicationId.equals(line.trim())) return applicationId;
+        }
+        return null;
     }
 
     @NotNull

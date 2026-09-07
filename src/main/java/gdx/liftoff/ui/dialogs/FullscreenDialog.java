@@ -188,6 +188,10 @@ public class FullscreenDialog extends PopTable {
         pathsPanel.forEach(PathsPanel::updateError);
     }
 
+    public void updateProjectPathFromProjectName() {
+        pathsPanel.forEach(PathsPanel::updateProjectPathFromProjectName);
+    }
+
     public static void show() {
         FullscreenDialog fullscreenDialog = new FullscreenDialog();
         fullscreenDialog.show(stage);

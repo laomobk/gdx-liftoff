@@ -4,6 +4,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Cursor.SystemCursor;
 import com.badlogic.gdx.scenes.scene2d.ui.Button;
+import com.badlogic.gdx.scenes.scene2d.ui.CheckBox;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
@@ -29,6 +30,7 @@ import static gdx.liftoff.Main.*;
 public class PathsPanel extends Table implements Panel {
     private TypingLabel errorLabel;
     private Button deleteProjectPathButton;
+    private TextButton projectFieldButton;
 
     public PathsPanel(boolean fullscreen) {
         populate(fullscreen);
@@ -43,7 +45,7 @@ public class PathsPanel extends Table implements Panel {
         addTooltip(label, Align.top, 0, prop.getProperty("destinationTip"));
 
         //project field
-        TextButton projectFieldButton = addField(UserData.projectPath);
+        projectFieldButton = addField(UserData.projectPath);
         addTooltip(projectFieldButton, label, Align.top, 0, prop.getProperty("destinationTip"));
         onChange(projectFieldButton, () -> {
             Gdx.input.setInputProcessor(null);
@@ -65,7 +67,9 @@ public class PathsPanel extends Table implements Panel {
                         String path = files.first().path();
                         projectFieldButton.setText(path);
                         UserData.projectPath = path;
+                        UserData.projectPathSynced = false;
                         pref.putString("projectPath", path);
+                        pref.putBoolean("projectPathSynced", false);
                         flushPref();
                         updateError();
                         if (FullscreenDialog.fullscreenDialog != null)
@@ -92,6 +96,22 @@ public class PathsPanel extends Table implements Panel {
         addTooltip(deleteProjectPathButton, Align.top, 0, prop.getProperty("deleteFolder"));
         onChange(deleteProjectPathButton, ConfirmDeleteProjectFolder::showDialog);
         updateDeleteProjectPathButton();
+
+        //create directory checkbox
+        row();
+        CheckBox createDirectoryCheckBox = new CheckBox(prop.getProperty("createDirectory"), skin);
+        createDirectoryCheckBox.setChecked(UserData.createDirectory);
+        add(createDirectoryCheckBox).colspan(4).left();
+        addHandListener(createDirectoryCheckBox);
+        onChange(createDirectoryCheckBox, () -> {
+            UserData.createDirectory = createDirectoryCheckBox.isChecked();
+            pref.putBoolean("createDirectory", UserData.createDirectory);
+            flushPref();
+            updateError();
+            if (FullscreenDialog.fullscreenDialog != null)
+                FullscreenDialog.fullscreenDialog.updateGenerateButtons();
+            if (root.settingsTable != null) root.settingsTable.updateGenerateButton();
+        });
 
         if (UserData.platforms.contains("android")) {
             //android label
@@ -155,6 +175,16 @@ public class PathsPanel extends Table implements Panel {
         deleteProjectPathButton.setDisabled(UserData.projectPath == null || UserData.projectPath.isEmpty());
     }
 
+    public void updateProjectPathFromProjectName() {
+        if (!UserData.projectPathSynced || UserData.projectPath == null || UserData.projectPath.isEmpty()) return;
+        UserData.projectPath = Main.getSynchronizedProjectPath(UserData.projectPath, UserData.projectName);
+        projectFieldButton.setText(UserData.projectPath);
+        pref.putString("projectPath", UserData.projectPath);
+        flushPref();
+        updateError();
+        updateDeleteProjectPathButton();
+    }
+
     public void updateError() {
         final List<String> errors = new ArrayList<>();
 
@@ -170,7 +200,10 @@ public class PathsPanel extends Table implements Panel {
         }
 
         FileHandle tempFileHandle = Gdx.files.absolute(UserData.projectPath);
-        if (!tempFileHandle.exists() || !tempFileHandle.isDirectory()) {
+        if (tempFileHandle.exists() && !tempFileHandle.isDirectory()) {
+            errors.add(prop.getProperty("notDirectory"));
+        }
+        if (!tempFileHandle.exists() && !UserData.createDirectory) {
             errors.add(prop.getProperty("notDirectory"));
         }
 

@@ -23,6 +23,7 @@ import static gdx.liftoff.Main.*;
 public class ProjectPanel extends Table implements Panel {
     private TextField keyboardActor;
     private TypingLabel errorLabel;
+    private boolean updatingPackageName;
 
     public ProjectPanel(boolean fullscreen) {
         populate(fullscreen);
@@ -50,12 +51,6 @@ public class ProjectPanel extends Table implements Panel {
         table.add(projectTextField);
         addIbeamListener(projectTextField);
         addTooltip(projectTextField, label, Align.top, TOOLTIP_WIDTH_LARGE, prop.getProperty("nameTip"));
-        onChange(projectTextField, () -> {
-            UserData.projectName = projectTextField.getText();
-            pref.putString("Name", projectTextField.getText());
-            flushPref();
-        });
-
         //package label
         table.row();
         label = new Label(prop.getProperty("packageName"), skin);
@@ -70,7 +65,30 @@ public class ProjectPanel extends Table implements Panel {
         addTooltip(packageTextField, label, Align.top, TOOLTIP_WIDTH_LARGE, prop.getProperty("packageTip"));
         onChange(packageTextField, () -> {
             UserData.packageName = packageTextField.getText();
+            if (updatingPackageName) return;
+            UserData.packageNameSynced = false;
             pref.putString("Package", packageTextField.getText());
+            pref.putBoolean("packageNameSynced", false);
+            flushPref();
+        });
+
+        onChange(projectTextField, () -> {
+            UserData.projectName = projectTextField.getText();
+            if (UserData.packageNameSynced) {
+                String packageName = Main.getSynchronizedPackageName(UserData.projectName, UserData.packageName);
+                UserData.packageName = packageName;
+                updatingPackageName = true;
+                packageTextField.setText(packageName);
+                updatingPackageName = false;
+            }
+            if (UserData.projectPathSynced) {
+                if (root.settingsTable != null) root.settingsTable.updateProjectPathFromProjectName();
+                if (FullscreenDialog.fullscreenDialog != null)
+                    FullscreenDialog.fullscreenDialog.updateProjectPathFromProjectName();
+            }
+            pref.putString("Name", projectTextField.getText());
+            pref.putString("Package", UserData.packageName);
+            pref.putString("projectPath", UserData.projectPath);
             flushPref();
         });
 
